@@ -277,7 +277,7 @@ class Trainer:
                             if ap50 is not None:
                                 self.clearml_logger.report_scalar(title="validation", series="mAP50",
                                                                  value=float(ap50), iteration=epoch_idx)
-                            self.clearml_logger.report_scalar(title="validation", series="best_AP50_95",
+                            self.clearml_logger.report_scalar(title="validation", series="best_mAP50_95",
                                                              value=float(self.best_ap), iteration=epoch_idx)
                         elif hasattr(self.clearml_logger, "report_single_value"):
                             if ap50_95 is not None:
