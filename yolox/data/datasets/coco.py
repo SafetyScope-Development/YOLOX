@@ -40,7 +40,7 @@ class COCODataset(CacheDataset):
         self,
         data_dir=None,
         json_file="instances_train2017.json",
-        name="train2017",
+        name="train",
         img_size=(416, 416),
         preproc=None,
         cache=False,
@@ -51,7 +51,7 @@ class COCODataset(CacheDataset):
         Args:
             data_dir (str): dataset root directory
             json_file (str): COCO json file name
-            name (str): COCO data name (e.g. 'train2017' or 'val2017')
+            name (str): COCO data name (e.g. 'train' or 'val')
             img_size (int): target image size after pre-processing
             preproc: data augmentation strategy
         """
