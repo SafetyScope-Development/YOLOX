@@ -98,7 +98,7 @@ def make_parser():
 
 
 @logger.catch
-def main(exp: Exp, args):
+def main(exp: Exp, args, clearml_logger=None):
     if exp.seed is not None:
         random.seed(exp.seed)
         torch.manual_seed(exp.seed)
@@ -115,7 +115,42 @@ def main(exp: Exp, args):
     cudnn.benchmark = True
 
     trainer = exp.get_trainer(args)
-    trainer.train()
+    trainer.train(clearml_logger=clearml_logger)
+
+
+def train(exp: Exp, args, clearml_logger=None):
+    """Programmatic API to start training with an optional ClearML logger.
+
+    This mirrors the CLI entrypoint behavior but allows passing a ClearML logger
+    that will be threaded to validation logging after each epoch.
+
+    Args:
+        exp: Experiment instance.
+        args: Parsed args namespace compatible with make_parser().
+        clearml_logger: Optional ClearML logger object.
+    """
+    configure_module()
+    check_exp_value(exp)
+
+    if not getattr(args, "experiment_name", None):
+        args.experiment_name = exp.exp_name
+
+    num_gpu = get_num_devices() if args.devices is None else args.devices
+    assert num_gpu <= get_num_devices()
+
+    if args.cache is not None:
+        exp.dataset = exp.get_dataset(cache=True, cache_type=args.cache)
+
+    dist_url = "auto" if args.dist_url is None else args.dist_url
+    launch(
+        main,
+        num_gpu,
+        args.num_machines,
+        args.machine_rank,
+        backend=args.dist_backend,
+        dist_url=dist_url,
+        args=(exp, args, clearml_logger),
+    )
 
 
 if __name__ == "__main__":
@@ -142,5 +177,5 @@ if __name__ == "__main__":
         args.machine_rank,
         backend=args.dist_backend,
         dist_url=dist_url,
-        args=(exp, args),
+        args=(exp, args),  # clearml_logger defaults to None in main()
     )

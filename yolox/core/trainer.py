@@ -71,21 +71,26 @@ class Trainer:
             mode="a",
         )
 
-    def train(self):
+    def train(self, clearml_logger=None):
+        """Run training. Optionally accepts a ClearML logger to report metrics.
+
+        Args:
+            clearml_logger: Optional ClearML Logger (e.g., Task.current_task().get_logger()).
+        """
         self.before_train()
         try:
-            self.train_in_epoch()
+            self.train_in_epoch(clearml_logger)
         except Exception as e:
             logger.error("Exception in training: ", e)
             raise
         finally:
             self.after_train()
 
-    def train_in_epoch(self):
+    def train_in_epoch(self, clearml_logger=None):
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.before_epoch()
             self.train_in_iter()
-            self.after_epoch()
+            self.after_epoch(clearml_logger)
 
     def train_in_iter(self):
         for self.iter in range(self.max_iter):
@@ -229,12 +234,38 @@ class Trainer:
             if not self.no_aug:
                 self.save_ckpt(ckpt_name="last_mosaic_epoch")
 
-    def after_epoch(self):
+    def after_epoch(self, clearml_logger=None):
         self.save_ckpt(ckpt_name="latest")
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
             all_reduce_norm(self.model)
-            self.evaluate_and_save_model()
+            # Run evaluation and get metrics
+            eval_results = self.evaluate_and_save_model()
+
+            # Optionally, log validation metrics to ClearML if a logger is provided (rank 0 only)
+            if clearml_logger is not None and self.rank == 0 and isinstance(eval_results, dict):
+                ap50_95 = eval_results.get("ap50_95")
+                ap50 = eval_results.get("ap50")
+                epoch_idx = int(eval_results.get("epoch", self.epoch + 1))
+                # Prefer ClearML's scalar API if available; fallback to single value
+                try:
+                    if hasattr(clearml_logger, "report_scalar"):
+                        if ap50_95 is not None:
+                            clearml_logger.report_scalar(title="validation", series="COCOAP50_95",
+                                                         value=float(ap50_95), iteration=epoch_idx)
+                        if ap50 is not None:
+                            clearml_logger.report_scalar(title="validation", series="COCOAP50",
+                                                         value=float(ap50), iteration=epoch_idx)
+                        clearml_logger.report_scalar(title="validation", series="best_AP50_95",
+                                                     value=float(self.best_ap), iteration=epoch_idx)
+                    elif hasattr(clearml_logger, "report_single_value"):
+                        if ap50_95 is not None:
+                            clearml_logger.report_single_value("val/COCOAP50_95", float(ap50_95), iteration=epoch_idx)
+                        if ap50 is not None:
+                            clearml_logger.report_single_value("val/COCOAP50", float(ap50), iteration=epoch_idx)
+                        clearml_logger.report_single_value("val/best_ap", float(self.best_ap), iteration=epoch_idx)
+                except Exception as _e:
+                    logger.warning(f"Failed to log metrics to ClearML: {_e}")
 
     def before_iter(self):
         pass
@@ -378,7 +409,7 @@ class Trainer:
                     "train/epoch": self.epoch + 1,
                 }
                 self.mlflow_logger.on_log(self.args, self.exp, self.epoch+1, logs)
-            logger.info("\n" + summary)
+            logger.info("\n" + (summary if isinstance(summary, str) else str(summary)))
         synchronize()
 
         self.save_ckpt("last_epoch", update_best_ckpt, ap=ap50_95)
@@ -395,6 +426,15 @@ class Trainer:
                 }
             self.mlflow_logger.save_checkpoints(self.args, self.exp, self.file_name, self.epoch,
                                                 metadata, update_best_ckpt)
+
+        # Return metrics for optional external loggers (e.g., ClearML)
+        return {
+            "ap50_95": ap50_95,
+            "ap50": ap50,
+            "summary": summary,
+            "best_ap": self.best_ap,
+            "epoch": self.epoch + 1,
+        }
 
     def save_ckpt(self, ckpt_name, update_best_ckpt=False, ap=None):
         if self.rank == 0:
