@@ -90,6 +90,7 @@ def make_parser():
     )
     parser.add_argument(
         "--clearml-task-id",
+        dest="clearml_task_id",
         type=str,
         default=None,
         help="ClearML Task ID to use when --logger clearml is set (used to fetch Task via Task.get_task)."
