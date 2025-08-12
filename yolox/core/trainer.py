@@ -194,16 +194,22 @@ class Trainer:
             elif self.args.logger == "clearml":
                 try:
                     from clearml import Task  # type: ignore
-                    task = Task.current_task()
-                    if task is None:
-                        logger.warning("ClearML logging selected but no active Task found. "
+                    task_id = getattr(self.args, "clearml_task_id", None)
+                    if not task_id:
+                        logger.warning("--logger clearml set but --clearml-task-id was not provided. "
                                        "Metrics will not be logged to ClearML.")
                         self.clearml_logger = None
                     else:
-                        self.clearml_logger = task.get_logger()
-                        logger.info("ClearML logger initialized.")
+                        task = Task.get_task(task_id=task_id)
+                        if task is None:
+                            logger.warning(f"ClearML Task with id '{task_id}' not found. "
+                                           "Metrics will not be logged to ClearML.")
+                            self.clearml_logger = None
+                        else:
+                            self.clearml_logger = task.get_logger()
+                            logger.info(f"ClearML logger initialized for Task ID {task_id}.")
                 except Exception as e:
-                    logger.warning(f"ClearML logging selected but not available: {e}. "
+                    logger.warning(f"ClearML logging selected but initialization failed: {e}. "
                                    "Metrics will not be logged to ClearML.")
                     self.clearml_logger = None
             else:

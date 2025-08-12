@@ -89,6 +89,12 @@ def make_parser():
         default="tensorboard"
     )
     parser.add_argument(
+        "--clearml-task-id",
+        type=str,
+        default=None,
+        help="ClearML Task ID to use when --logger clearml is set (used to fetch Task via Task.get_task)."
+    )
+    parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
         default=None,
