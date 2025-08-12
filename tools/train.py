@@ -121,6 +121,18 @@ def main(exp: Exp, args):
     configure_omp()
     cudnn.benchmark = True
 
+    # Ensure ClearML Task ID is present if requested via flag; fallback to env
+    if getattr(args, "logger", None) == "clearml" and not getattr(args, "clearml_task_id", None):
+        import os
+        env_task_id = os.environ.get("CLEARML_TASK_ID")
+        if env_task_id:
+            args.clearml_task_id = env_task_id
+            logger.info(f"Using CLEARML_TASK_ID from environment: {env_task_id}")
+        else:
+            logger.warning("--logger clearml set but --clearml-task-id not provided and CLEARML_TASK_ID env not set.")
+
+    logger.info(f"Logger selected: {getattr(args, 'logger', None)}; clearml_task_id={getattr(args, 'clearml_task_id', None)}")
+
     trainer = exp.get_trainer(args)
     trainer.train()
 

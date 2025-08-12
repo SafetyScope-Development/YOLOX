@@ -194,12 +194,14 @@ class Trainer:
             elif self.args.logger == "clearml":
                 try:
                     from clearml import Task  # type: ignore
-                    task_id = getattr(self.args, "clearml_task_id", None)
+                    # Prefer CLI, fallback to env var CLEARML_TASK_ID
+                    task_id = getattr(self.args, "clearml_task_id", None) or os.environ.get("CLEARML_TASK_ID")
                     if not task_id:
-                        logger.warning("--logger clearml set but --clearml-task-id was not provided. "
+                        logger.warning("--logger clearml set but --clearml-task-id was not provided (and env CLEARML_TASK_ID not set). "
                                        "Metrics will not be logged to ClearML.")
                         self.clearml_logger = None
                     else:
+                        logger.info(f"Initializing ClearML with Task ID: {task_id}")
                         task = Task.get_task(task_id=task_id)
                         if task is None:
                             logger.warning(f"ClearML Task with id '{task_id}' not found. "
