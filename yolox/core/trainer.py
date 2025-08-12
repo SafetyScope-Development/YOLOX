@@ -71,26 +71,22 @@ class Trainer:
             mode="a",
         )
 
-    def train(self, clearml_logger=None):
-        """Run training. Optionally accepts a ClearML logger to report metrics.
-
-        Args:
-            clearml_logger: Optional ClearML Logger (e.g., Task.current_task().get_logger()).
-        """
+    def train(self):
+        """Run training."""
         self.before_train()
         try:
-            self.train_in_epoch(clearml_logger)
+            self.train_in_epoch()
         except Exception as e:
             logger.error("Exception in training: ", e)
             raise
         finally:
             self.after_train()
 
-    def train_in_epoch(self, clearml_logger=None):
+    def train_in_epoch(self):
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.before_epoch()
             self.train_in_iter()
-            self.after_epoch(clearml_logger)
+            self.after_epoch()
 
     def train_in_iter(self):
         for self.iter in range(self.max_iter):
@@ -182,7 +178,7 @@ class Trainer:
         self.evaluator = self.exp.get_evaluator(
             batch_size=self.args.batch_size, is_distributed=self.is_distributed
         )
-        # Tensorboard and Wandb loggers
+        # Tensorboard, Wandb, Mlflow, ClearML loggers
         if self.rank == 0:
             if self.args.logger == "tensorboard":
                 self.tblogger = SummaryWriter(os.path.join(self.file_name, "tensorboard"))
@@ -195,8 +191,23 @@ class Trainer:
             elif self.args.logger == "mlflow":
                 self.mlflow_logger = MlflowLogger()
                 self.mlflow_logger.setup(args=self.args, exp=self.exp)
+            elif self.args.logger == "clearml":
+                try:
+                    from clearml import Task  # type: ignore
+                    task = Task.current_task()
+                    if task is None:
+                        logger.warning("ClearML logging selected but no active Task found. "
+                                       "Metrics will not be logged to ClearML.")
+                        self.clearml_logger = None
+                    else:
+                        self.clearml_logger = task.get_logger()
+                        logger.info("ClearML logger initialized.")
+                except Exception as e:
+                    logger.warning(f"ClearML logging selected but not available: {e}. "
+                                   "Metrics will not be logged to ClearML.")
+                    self.clearml_logger = None
             else:
-                raise ValueError("logger must be either 'tensorboard', 'mlflow' or 'wandb'")
+                raise ValueError("logger must be one of 'tensorboard', 'mlflow', 'wandb', or 'clearml'")
 
         logger.info("Training start...")
         logger.info("\n{}".format(model))
@@ -234,7 +245,7 @@ class Trainer:
             if not self.no_aug:
                 self.save_ckpt(ckpt_name="last_mosaic_epoch")
 
-    def after_epoch(self, clearml_logger=None):
+    def after_epoch(self):
         self.save_ckpt(ckpt_name="latest")
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
@@ -242,30 +253,32 @@ class Trainer:
             # Run evaluation and get metrics
             eval_results = self.evaluate_and_save_model()
 
-            # Optionally, log validation metrics to ClearML if a logger is provided (rank 0 only)
-            if clearml_logger is not None and self.rank == 0 and isinstance(eval_results, dict):
-                ap50_95 = eval_results.get("ap50_95")
-                ap50 = eval_results.get("ap50")
-                epoch_idx = int(eval_results.get("epoch", self.epoch + 1))
-                # Prefer ClearML's scalar API if available; fallback to single value
-                try:
-                    if hasattr(clearml_logger, "report_scalar"):
-                        if ap50_95 is not None:
-                            clearml_logger.report_scalar(title="validation", series="COCOAP50_95",
-                                                         value=float(ap50_95), iteration=epoch_idx)
-                        if ap50 is not None:
-                            clearml_logger.report_scalar(title="validation", series="COCOAP50",
-                                                         value=float(ap50), iteration=epoch_idx)
-                        clearml_logger.report_scalar(title="validation", series="best_AP50_95",
-                                                     value=float(self.best_ap), iteration=epoch_idx)
-                    elif hasattr(clearml_logger, "report_single_value"):
-                        if ap50_95 is not None:
-                            clearml_logger.report_single_value("val/COCOAP50_95", float(ap50_95), iteration=epoch_idx)
-                        if ap50 is not None:
-                            clearml_logger.report_single_value("val/COCOAP50", float(ap50), iteration=epoch_idx)
-                        clearml_logger.report_single_value("val/best_ap", float(self.best_ap), iteration=epoch_idx)
-                except Exception as _e:
-                    logger.warning(f"Failed to log metrics to ClearML: {_e}")
+            # ClearML validation logging via flag (rank 0 only)
+            if self.rank == 0 and self.args.logger == "clearml":
+                if getattr(self, "clearml_logger", None) is None:
+                    logger.warning("ClearML logger is not set up; skipping ClearML validation logging.")
+                elif isinstance(eval_results, dict):
+                    ap50_95 = eval_results.get("ap50_95")
+                    ap50 = eval_results.get("ap50")
+                    epoch_idx = int(eval_results.get("epoch", self.epoch + 1))
+                    try:
+                        if hasattr(self.clearml_logger, "report_scalar"):
+                            if ap50_95 is not None:
+                                self.clearml_logger.report_scalar(title="validation", series="COCOAP50_95",
+                                                                 value=float(ap50_95), iteration=epoch_idx)
+                            if ap50 is not None:
+                                self.clearml_logger.report_scalar(title="validation", series="COCOAP50",
+                                                                 value=float(ap50), iteration=epoch_idx)
+                            self.clearml_logger.report_scalar(title="validation", series="best_AP50_95",
+                                                             value=float(self.best_ap), iteration=epoch_idx)
+                        elif hasattr(self.clearml_logger, "report_single_value"):
+                            if ap50_95 is not None:
+                                self.clearml_logger.report_single_value("val/COCOAP50_95", float(ap50_95), iteration=epoch_idx)
+                            if ap50 is not None:
+                                self.clearml_logger.report_single_value("val/COCOAP50", float(ap50), iteration=epoch_idx)
+                            self.clearml_logger.report_single_value("val/best_ap", float(self.best_ap), iteration=epoch_idx)
+                    except Exception as _e:
+                        logger.warning(f"Failed to log metrics to ClearML: {_e}")
 
     def before_iter(self):
         pass
@@ -326,6 +339,23 @@ class Trainer:
                     logs = {"train/" + k: v.latest for k, v in loss_meter.items()}
                     logs.update({"train/lr": self.meter["lr"].latest})
                     self.mlflow_logger.on_log(self.args, self.exp, self.epoch+1, logs)
+                if self.args.logger == 'clearml':
+                    if getattr(self, "clearml_logger", None) is None:
+                        logger.warning("ClearML logger is not set up; skipping ClearML training logging.")
+                    else:
+                        try:
+                            if hasattr(self.clearml_logger, "report_scalar"):
+                                self.clearml_logger.report_scalar(title="train", series="lr",
+                                                                 value=float(self.meter["lr"].latest), iteration=self.progress_in_iter)
+                                for k, v in loss_meter.items():
+                                    self.clearml_logger.report_scalar(title="train", series=k,
+                                                                     value=float(v.latest), iteration=self.progress_in_iter)
+                            elif hasattr(self.clearml_logger, "report_single_value"):
+                                self.clearml_logger.report_single_value("train/lr", float(self.meter["lr"].latest), iteration=self.progress_in_iter)
+                                for k, v in loss_meter.items():
+                                    self.clearml_logger.report_single_value(f"train/{k}", float(v.latest), iteration=self.progress_in_iter)
+                        except Exception as _e:
+                            logger.warning(f"Failed to log training metrics to ClearML: {_e}")
 
             self.meter.clear_meters()
 

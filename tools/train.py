@@ -85,7 +85,7 @@ def make_parser():
         "--logger",
         type=str,
         help="Logger to be used for metrics. \
-                Implemented loggers include `tensorboard`, `mlflow` and `wandb`.",
+                Implemented loggers include `tensorboard`, `mlflow`, `wandb`, and `clearml`.",
         default="tensorboard"
     )
     parser.add_argument(
@@ -98,7 +98,7 @@ def make_parser():
 
 
 @logger.catch
-def main(exp: Exp, args, clearml_logger=None):
+def main(exp: Exp, args):
     if exp.seed is not None:
         random.seed(exp.seed)
         torch.manual_seed(exp.seed)
@@ -115,14 +115,15 @@ def main(exp: Exp, args, clearml_logger=None):
     cudnn.benchmark = True
 
     trainer = exp.get_trainer(args)
-    trainer.train(clearml_logger=clearml_logger)
+    trainer.train()
 
 
 def train(exp: Exp, args, clearml_logger=None):
     """Programmatic API to start training with an optional ClearML logger.
 
     This mirrors the CLI entrypoint behavior but allows passing a ClearML logger
-    that will be threaded to validation logging after each epoch.
+    (ignored). ClearML is now enabled via `--logger clearml` and auto-detected
+    if a ClearML Task is active.
 
     Args:
         exp: Experiment instance.
@@ -149,7 +150,7 @@ def train(exp: Exp, args, clearml_logger=None):
         args.machine_rank,
         backend=args.dist_backend,
         dist_url=dist_url,
-        args=(exp, args, clearml_logger),
+        args=(exp, args),
     )
 
 
@@ -177,5 +178,5 @@ if __name__ == "__main__":
         args.machine_rank,
         backend=args.dist_backend,
         dist_url=dist_url,
-        args=(exp, args),  # clearml_logger defaults to None in main()
+        args=(exp, args),
     )
