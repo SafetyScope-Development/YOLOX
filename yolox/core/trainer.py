@@ -272,18 +272,18 @@ class Trainer:
                     try:
                         if hasattr(self.clearml_logger, "report_scalar"):
                             if ap50_95 is not None:
-                                self.clearml_logger.report_scalar(title="validation", series="COCOAP50_95",
+                                self.clearml_logger.report_scalar(title="validation", series="mAP50_95",
                                                                  value=float(ap50_95), iteration=epoch_idx)
                             if ap50 is not None:
-                                self.clearml_logger.report_scalar(title="validation", series="COCOAP50",
+                                self.clearml_logger.report_scalar(title="validation", series="mAP50",
                                                                  value=float(ap50), iteration=epoch_idx)
                             self.clearml_logger.report_scalar(title="validation", series="best_AP50_95",
                                                              value=float(self.best_ap), iteration=epoch_idx)
                         elif hasattr(self.clearml_logger, "report_single_value"):
                             if ap50_95 is not None:
-                                self.clearml_logger.report_single_value("val/COCOAP50_95", float(ap50_95), iteration=epoch_idx)
+                                self.clearml_logger.report_single_value("val/mAP50_95", float(ap50_95), iteration=epoch_idx)
                             if ap50 is not None:
-                                self.clearml_logger.report_single_value("val/COCOAP50", float(ap50), iteration=epoch_idx)
+                                self.clearml_logger.report_single_value("val/mAP50", float(ap50), iteration=epoch_idx)
                             self.clearml_logger.report_single_value("val/best_ap", float(self.best_ap), iteration=epoch_idx)
                     except Exception as _e:
                         logger.warning(f"Failed to log metrics to ClearML: {_e}")
@@ -430,19 +430,19 @@ class Trainer:
 
         if self.rank == 0:
             if self.args.logger == "tensorboard":
-                self.tblogger.add_scalar("val/COCOAP50", ap50, self.epoch + 1)
-                self.tblogger.add_scalar("val/COCOAP50_95", ap50_95, self.epoch + 1)
+                self.tblogger.add_scalar("val/mAP50", ap50, self.epoch + 1)
+                self.tblogger.add_scalar("val/mAP50_95", ap50_95, self.epoch + 1)
             if self.args.logger == "wandb":
                 self.wandb_logger.log_metrics({
-                    "val/COCOAP50": ap50,
-                    "val/COCOAP50_95": ap50_95,
+                    "val/mAP50": ap50,
+                    "val/mAP50_95": ap50_95,
                     "train/epoch": self.epoch + 1,
                 })
                 self.wandb_logger.log_images(predictions)
             if self.args.logger == "mlflow":
                 logs = {
-                    "val/COCOAP50": ap50,
-                    "val/COCOAP50_95": ap50_95,
+                    "val/mAP50": ap50,
+                    "val/mAP50_95": ap50_95,
                     "val/best_ap": round(self.best_ap, 3),
                     "train/epoch": self.epoch + 1,
                 }
