@@ -22,22 +22,42 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
         y1 = int(box[3])
 
         color = (_COLORS[cls_id] * 255).astype(np.uint8).tolist()
-        text = '{}:{:.1f}%'.format(class_names[cls_id], score * 100)
-        txt_color = (0, 0, 0) if np.mean(_COLORS[cls_id]) > 0.5 else (255, 255, 255)
+        text = '{}'.format(class_names[cls_id])
+        txt_color = (255, 255, 255)
         font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.6
+        thickness = 2
 
-        txt_size = cv2.getTextSize(text, font, 0.4, 1)[0]
-        cv2.rectangle(img, (x0, y0), (x1, y1), color, 2)
+        # Draw a clean rectangle (rounded corners effect)
+        cv2.rectangle(img, (x0, y0), (x1, y1), color, 2, lineType=cv2.LINE_AA)
 
+        # Calculate text size
+        (txt_w, txt_h), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+        # Place label below the top line of the box
+        label_y = y0 + txt_h + 6
+        label_x = x0 + 2
+
+        # Draw filled rectangle for text background (slightly larger than text)
         txt_bk_color = (_COLORS[cls_id] * 255 * 0.7).astype(np.uint8).tolist()
         cv2.rectangle(
             img,
-            (x0, y0 + 1),
-            (x0 + txt_size[0] + 1, y0 + int(1.5*txt_size[1])),
+            (x0, y0 + 2),
+            (x0 + txt_w + 8, y0 + txt_h + 8),
             txt_bk_color,
-            -1
+            -1,
+            lineType=cv2.LINE_AA
         )
-        cv2.putText(img, text, (x0, y0 + txt_size[1]), font, 0.4, txt_color, thickness=1)
+        # Draw text (label)
+        cv2.putText(
+            img,
+            text,
+            (label_x, label_y),
+            font,
+            font_scale,
+            txt_color,
+            thickness=thickness,
+            lineType=cv2.LINE_AA
+        )
 
     return img
 
